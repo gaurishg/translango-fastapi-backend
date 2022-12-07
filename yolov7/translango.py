@@ -1,38 +1,40 @@
 import time
-from pathlib import Path
+import os
 
 import torch
 
 from models.experimental import attempt_load
 from utils.datasets import LoadImages, TransformImage
 from utils.general import check_img_size, non_max_suppression, \
-    scale_coords, xyxy2xywh
+    scale_coords, xyxy2xywh, set_logging
 from utils.torch_utils import select_device, time_synchronized
 import numpy as np
 
 from typing import List, Dict
 
+set_logging()
+imgsz = 640
+device = select_device('0' if torch.cuda.is_available() else 'cpu') # or 0, 1 or 2 for selecting GPU
+half = device.type != 'cpu'  # half precision only supported on CUDA# Load model
+augment = False
+conf_thres = 0.25
+iou_thres = 0.45
+weights = f'/home/ubuntu/yolov7-flask/yolov7/yolov7-tiny.pt'
+# Initialize
+model = attempt_load(weights, map_location=device)  # load FP32 model
+stride = int(model.stride.max())  # model stride
+imgsz = check_img_size(imgsz, s=stride)  # check img_size
+
+if half:
+    model.half()  # to FP16
+
+# Run inference
+if device.type != 'cpu':
+    model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
+
+
 def translango_detect(img_array: np.ndarray) -> List[Dict]:
-    # source, weights, view_img, save_txt, imgsz, trace = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, not opt.no_trace
-    weights = '/home/ubuntu/yolov7-flask/yolov7/yolov7.pt'
-    imgsz = 640
-    # device = select_device('0')
-    device = select_device('cpu')
-    augment = False
-    conf_thres = 0.25
-    iou_thres = 0.45
     predictions: List[Dict] = []
-
-    # Initialize
-    half = device.type != 'cpu'  # half precision only supported on CUDA
-
-    # Load model
-    model = attempt_load(weights, map_location=device)  # load FP32 model
-    stride = int(model.stride.max())  # model stride
-    imgsz = check_img_size(imgsz, s=stride)  # check img_size
-
-    if half:
-        model.half()  # to FP16
 
     # Set Dataloader
     # dataset = LoadImages(source, img_size=imgsz, stride=stride)
@@ -41,9 +43,6 @@ def translango_detect(img_array: np.ndarray) -> List[Dict]:
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
 
-    # Run inference
-    if device.type != 'cpu':
-        model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
     old_img_w = old_img_h = imgsz
     old_img_b = 1
 
@@ -96,9 +95,5 @@ def translango_detect(img_array: np.ndarray) -> List[Dict]:
                     "conf": conf.item()
                 })
     t4 = time_synchronized()
-
-    print(f"{t4-t3}")
+    print(f'Ran in {1000 * (t4 - t0)} m seconds')
     return predictions
-
-if __name__ == '__main__':
-    print(translango_detect())
