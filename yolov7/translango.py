@@ -14,7 +14,7 @@ from typing import List, Dict
 
 def translango_detect(img_array: np.ndarray) -> List[Dict]:
     # source, weights, view_img, save_txt, imgsz, trace = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, not opt.no_trace
-    weights = 'yolov7/yolov7.pt'
+    weights = '/home/ubuntu/yolov7-flask/yolov7/yolov7.pt'
     imgsz = 640
     # device = select_device('0')
     device = select_device('cpu')

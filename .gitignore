@@ -1,4 +1,8 @@
 pytorchenv
+project_env
+yolov7.pt
+traced_model.pt
+traced-model.pt
 .cache
 __pycache__
 runs
