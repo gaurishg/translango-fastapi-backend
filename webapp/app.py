@@ -14,6 +14,9 @@ sys.path.append(os.path.abspath(os.path.join(current_path, '..')))
 sys.path.append(os.path.abspath(os.path.join(current_path, '..', 'yolov7')))
 # print(sys.path)
 import yolov7.translango
+from google.cloud import translate
+from collections import defaultdict
+from typing import List, Dict, Tuple
 
 app = Flask(__name__)
 
@@ -23,12 +26,70 @@ ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
  
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-     
+
+
+
+translation_map = defaultdict(dict)
+
+
+def translate_text(text="Hello, world!", target_lang="ja", source_lang=None, project_id="translango-gaurish"):
+
+    client = translate.TranslationServiceClient()
+    location = "global"
+    parent = f"projects/{project_id}/locations/{location}"
+    request_dict = {
+            "parent": parent,
+            "contents": [text],
+            "mime_type": "text/plain",
+            "target_language_code": target_lang
+            }
+    if source_lang:
+        request_dict["source_language_code"] = source_lang
+    response = client.translate_text(
+        request=request_dict
+    )
+
+    # for translation in response.translations:
+    #    print("Translated text: {}".format(translation.translated_text))
+    return list(response.translations)[0].translated_text
+
+def add_translations_to_detections(detections: List[Dict], target_lang='ja'):
+    for detection in detections:
+        if detection['name'] not in translation_map or target_lang not in translation_map[detection['name']]:
+            translation_map[detection['name']][target_lang] = translate_text(detection['name'], target_lang)
+        detection['translation'] = translation_map[detection['name']][target_lang]
+
  
 @app.route('/')
 def home():
-    return render_template('index.html')
+    image_url = request.args.get('url')
+    target_lang = request.args.get('target_lang') or 'ja'
+    if image_url is None:
+        return render_template('index.html')
+    else:
+        detections = yolov7.translango.translango_detect_from_url(image_url)
+        add_translations_to_detections(detections, target_lang)
+        response = {
+                'error': 'no',
+                'error_msg': 'no error',
+                'detections': detections
+                }
+        response_json = json.dumps(response)
+        return response_json
  
+@app.route('/text-translate')
+def text_translate():
+    text = request.args.get('text')
+    text = text if text is not None else 'hello'
+    # source_lang = request.args.get('source_lang')
+    # source_lang = source_lang if source_lang is not None else 'en'
+    target_lang = request.args.get('target_lang')
+    target_lang = target_lang if target_lang is not None else 'ja'
+    source_lang = request.args.get('source_lang')
+    if text not in translation_map or target_lang not in translation_map[text]:
+        translation_map[text][target_lang] = translate_text(text, target_lang)
+    return translation_map[text][target_lang]
+
 @app.route('/', methods=['POST'])
 def upload_image():
     if 'file' not in request.files:
@@ -39,13 +100,24 @@ def upload_image():
     image_bytes = file_stream.read()
     image = Image.open(BytesIO(image_bytes))
     array = np.array(image)
+    # print(request)
+    target_lang = request.form['target_lang']
+    # target_lang = target_lang if target_lang is not None else 'en'
     if file.filename == '':
         flash('No image selected for uploading')
         return redirect(request.url)
     if file and allowed_file(file.filename):
         detections = yolov7.translango.translango_detect(array)
+        add_translations_to_detections(detections, target_lang)
+        # for detection in detections:
+        #     if detection['name'] not in translation_map or target_lang not in translation_map[detection['name']]:
+        #         translation_map[detection['name']][target_lang] = translate_text(detection['name'], target_lang)
+        #     detection['translation'] = translation_map[detection['name']][target_lang]
+        #     print(f"{detection['name']} -> {detection['translation']}")
+
         complete_response = {
             'error': 'no',
+            'error_msg': 'no error',
             'detections': detections
         }
         response_json = json.dumps(complete_response)
@@ -57,7 +129,8 @@ def upload_image():
         print('Allowed image types are - png, jpg, jpeg, gif')
         error_response = {
             'error': 'yes',
-            'error_msg': 'Allowed image types are - png, jpg, jpeg, gif'
+            'error_msg': 'Allowed image types are - png, jpg, jpeg, gif',
+            'detections': None
         }
         # return redirect(request.url)
         return json.dumps(error_response)
