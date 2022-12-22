@@ -11,6 +11,9 @@ from utils.torch_utils import select_device, time_synchronized
 import numpy as np
 
 from typing import List, Dict
+import io
+import urllib.request
+from PIL import Image
 
 set_logging()
 imgsz = 640
@@ -19,7 +22,7 @@ half = device.type != 'cpu'  # half precision only supported on CUDA# Load model
 augment = False
 conf_thres = 0.25
 iou_thres = 0.45
-weights = f'/home/ubuntu/yolov7-flask/yolov7/yolov7-tiny.pt'
+weights = f'/home/gaurishgangwar/yolov7-flask/yolov7/yolov7-tiny.pt'
 # Initialize
 model = attempt_load(weights, map_location=device)  # load FP32 model
 stride = int(model.stride.max())  # model stride
@@ -97,3 +100,12 @@ def translango_detect(img_array: np.ndarray) -> List[Dict]:
     t4 = time_synchronized()
     print(f'Ran in {1000 * (t4 - t0)} m seconds')
     return predictions
+
+
+def translango_detect_from_url(url: str) -> List[Dict]:
+    with urllib.request.urlopen(url) as url_f:
+        f_handle = io.BytesIO(url_f.read())
+        img = Image.open(f_handle)
+        img = np.array(img)
+        return translango_detect(img)
+    return []
