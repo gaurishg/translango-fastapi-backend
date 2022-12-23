@@ -78,7 +78,7 @@ def home():
         return response_json
 
 
-@app.route('/', methods=['POST'])
+@app.route('/from-url', methods=['POST'])
 def home_post():
     image_url = request.form.get('url', None)
     target_lang = request.form.get('target_lang', 'en')
