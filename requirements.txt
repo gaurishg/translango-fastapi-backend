@@ -41,3 +41,4 @@ thop  # FLOPs computation
 
 Flask
 gunicorn
+google-cloud-translate
