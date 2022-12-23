@@ -6,4 +6,4 @@ RUN git clone https://github.com/UTokyo-PBL/yolov7-flask.git
 WORKDIR /yolov7-flask
 RUN pip install -r requirements.txt --no-cache-dir
 WORKDIR /yolov7-flask/webapp
-CMD exec gunicorn --bind :80 --timeout 0 app:app
+CMD exec gunicorn --bind :$PORT --timeout 0 app:app
