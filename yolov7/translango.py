@@ -22,7 +22,7 @@ half = device.type != 'cpu'  # half precision only supported on CUDA# Load model
 augment = False
 conf_thres = 0.25
 iou_thres = 0.45
-weights = f'/home/gaurishgangwar/yolov7-flask/yolov7/yolov7-tiny.pt'
+weights = f'/home/{os.environ.get("USER", "root")}/yolov7-flask/yolov7/yolov7x.pt'
 # Initialize
 model = attempt_load(weights, map_location=device)  # load FP32 model
 stride = int(model.stride.max())  # model stride
