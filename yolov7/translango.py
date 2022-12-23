@@ -23,6 +23,8 @@ augment = False
 conf_thres = 0.25
 iou_thres = 0.45
 weights = f'/home/{os.environ.get("USER", "root")}/yolov7-flask/yolov7/yolov7x.pt'
+if os.path.exists('/yolov7/yolov7x.pt'):
+    weights = '/yolov7/yolov7x.pt'
 # Initialize
 model = attempt_load(weights, map_location=device)  # load FP32 model
 stride = int(model.stride.max())  # model stride
