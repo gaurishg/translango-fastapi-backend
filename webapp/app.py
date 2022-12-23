@@ -89,7 +89,7 @@ def upload_image():
     image = Image.open(BytesIO(image_bytes))
     array = np.array(image)
     # print(request)
-    target_lang = request.form['target_lang']
+    target_lang = request.form.get('target_lang', 'en')
     # target_lang = target_lang if target_lang is not None else 'en'
     if file.filename == '':
         flash('No image selected for uploading')
