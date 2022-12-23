@@ -78,50 +78,6 @@ def home():
         return response_json
 
 
-@app.route('/from-url', methods=['POST'])
-def home_post():
-    image_url = request.form.get('url', None)
-    target_lang = request.form.get('target_lang', 'en')
-    if image_url is None:
-        response = {
-            'error': 'yes',
-            'error_msg': 'provide a valid image url',
-            'detections': [],
-                }
-        return json.dumps(response)
-    else:
-        detections = yolov7.translango.translango_detect_from_url(image_url)
-        add_translations_to_detections(detections, target_lang)
-        response = {
-                'error': 'no',
-                'error_msg': 'none',
-                'detections': detections,
-                }
-        return json.dumps(response)
-
-
-@app.route('/text-translate', methods=['GET'])
-def text_translate():
-    text = request.args.get('text')
-    text = text if text is not None else 'hello'
-    # source_lang = request.args.get('source_lang')
-    # source_lang = source_lang if source_lang is not None else 'en'
-    target_lang = request.args.get('target_lang')
-    target_lang = target_lang if target_lang is not None else 'ja'
-    source_lang = request.args.get('source_lang', None)
-    if text not in translation_map or target_lang not in translation_map[text]:
-        translation_map[text][target_lang] = translate_text(text, target_lang, source_lang)
-    return translation_map[text][target_lang]
-
-@app.route('/text-translate', methods=['POST'])
-def text_translate_post():
-    text = request.form.get('text', 'hello')
-    target_lang = request.form.get('target_lang', 'ja')
-    source_lang = request.form.get('source_lang', None)
-    if text not in translation_map or target_lang not in translation_map[text]:
-        translation_map[text][target_lang] = translate_text(text, target_lang, source_lang)
-    return translation_map[text][target_lang]
-
 @app.route('/', methods=['POST'])
 def upload_image():
     if 'file' not in request.files:
@@ -166,6 +122,53 @@ def upload_image():
         }
         # return redirect(request.url)
         return json.dumps(error_response)
+
+
+@app.route('/from-url', methods=['POST'])
+def home_post():
+    image_url = request.form.get('url', None)
+    target_lang = request.form.get('target_lang', 'en')
+    if image_url is None:
+        response = {
+            'error': 'yes',
+            'error_msg': 'provide a valid image url',
+            'detections': [],
+                }
+        return json.dumps(response)
+    else:
+        detections = yolov7.translango.translango_detect_from_url(image_url)
+        add_translations_to_detections(detections, target_lang)
+        response = {
+                'error': 'no',
+                'error_msg': 'none',
+                'detections': detections,
+                }
+        return json.dumps(response)
+
+
+@app.route('/text-translate', methods=['GET'])
+def text_translate():
+    text = request.args.get('text')
+    text = text if text is not None else 'hello'
+    # source_lang = request.args.get('source_lang')
+    # source_lang = source_lang if source_lang is not None else 'en'
+    target_lang = request.args.get('target_lang')
+    target_lang = target_lang if target_lang is not None else 'ja'
+    source_lang = request.args.get('source_lang', None)
+    if text not in translation_map or target_lang not in translation_map[text]:
+        translation_map[text][target_lang] = translate_text(text, target_lang, source_lang)
+    return translation_map[text][target_lang]
+
+@app.route('/text-translate', methods=['POST'])
+def text_translate_post():
+    text = request.form.get('text', 'hello')
+    target_lang = request.form.get('target_lang', 'ja')
+    source_lang = request.form.get('source_lang', None)
+    if text not in translation_map or target_lang not in translation_map[text]:
+        translation_map[text][target_lang] = translate_text(text, target_lang, source_lang)
+    return translation_map[text][target_lang]
+
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=os.environ.get("PORT", 80))
