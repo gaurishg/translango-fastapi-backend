@@ -2,6 +2,7 @@
 
 import sys
 import os
+import time
 
 current_path = sys.path[0]
 sys.path.append(os.path.abspath(os.path.join(current_path, "..")))
@@ -12,11 +13,14 @@ from typing import List, Dict, Tuple, Optional  # type: ignore
 
 from fastapi import FastAPI, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
 
 # from passlib.context import CryptContext
 from jose import jwt, JWTError
 from starlette.exceptions import HTTPException as StartletteHTTPException
-# from starlette.responses import HTMLResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 import bcrypt
 # import secrets
 from pydantic import BaseModel
@@ -80,6 +84,18 @@ def get_user_from_token_string(token_string: str = Depends(oauth2_scheme)):
     except JWTError:
         raise credentials_exception
 
+
+class SampleMiddleWare(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response: # type: ignore
+        # return await super().dispatch(request, call_next)
+        start_time = time.time()
+        response: Response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers['X-Process-Time'] = str(process_time)
+        return response
+
+app.add_middleware(SampleMiddleWare)
+app.add_middleware(CORSMiddleware, allow_origins=['*'])
 
 @app.get("/admin/users", tags=["Admin"])
 def admin_get_all_users():
