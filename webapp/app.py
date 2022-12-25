@@ -1,14 +1,135 @@
-#app.py
+# app.py
 
 import sys
 import os
+
 current_path = sys.path[0]
-sys.path.append(os.path.abspath(os.path.join(current_path, '..')))
-sys.path.append(os.path.abspath(os.path.join(current_path, '..', 'yolov7')))
+sys.path.append(os.path.abspath(os.path.join(current_path, "..")))
+sys.path.append(os.path.abspath(os.path.join(current_path, "..", "yolov7")))
 # print(sys.path)
 # import yolov7.translango
-from typing import List, Dict, Tuple # type: ignore
+from typing import List, Dict, Tuple, Optional  # type: ignore
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
-app = FastAPI()
+# from passlib.context import CryptContext
+from jose import jwt, JWTError
+from starlette.exceptions import HTTPException as StartletteHTTPException
+# from starlette.responses import HTMLResponse
+import bcrypt
+# import secrets
+from pydantic import BaseModel
+from dotenv import load_dotenv  # type: ignore
+
+load_dotenv()
+
+from database import User, UserFromFrontend, UserInDB, db
+
+app: FastAPI = FastAPI()
+
+SECRET_KEY = os.environ.get("SECRET_KEY", "")
+ALGORITHM = os.environ.get("ALGORITHM", "")
+if SECRET_KEY == "" or ALGORITHM == "":
+    print(f"SECRET_KEY or ALGORITHM environment variable(s) not set")
+    exit()
+
+# pwd_context = CryptContext(schemes=['bcrypt'])
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: str
+    email: str
+
+
+def authenticate_user(username: str, password: str):
+    user = UserInDB.get_from_username(username=username)
+    if user is None:
+        return False
+    if not bcrypt.checkpw(
+        password=password.encode("utf-8"), hashed_password=user.hashed_password
+    ):
+        return False
+    return user
+
+def get_user_from_token_string(token_string: str = Depends(oauth2_scheme)):
+    credentials_exception = StartletteHTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload: Dict[str, str] = jwt.decode(
+            token=token_string, key=SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        username = payload.get("username")
+        email = payload.get("email")
+        if username is None or email is None:
+            raise credentials_exception
+        user = UserInDB.get_from_username(username=username)
+        if user is None:
+            raise credentials_exception
+        return user
+    except JWTError:
+        raise credentials_exception
+
+
+@app.get("/admin/users", tags=["Admin"])
+def admin_get_all_users():
+    result: List[UserInDB] = db.query(UserInDB).all()
+    return [User.from_user_in_db(user) for user in result]
+
+
+@app.post("/admin/create-user", tags=["Admin"])
+def admin_create_user(user_with_pass: UserFromFrontend):
+    password = user_with_pass.password
+    salt = bcrypt.gensalt()
+    password_hash = bcrypt.hashpw(password=password.encode("utf-8"), salt=salt)
+    new_user = UserInDB(
+        username=user_with_pass.username,
+        firstname=user_with_pass.firstname,
+        middlename=user_with_pass.middlename,
+        lastname=user_with_pass.lastname,
+        email=user_with_pass.email,
+        hashed_password=password_hash,
+        salt=salt,
+    )
+    db.add(new_user)
+    db.commit()
+    return User(
+        username=new_user.username,
+        firstname=new_user.firstname,
+        middlename=new_user.middlename,
+        lastname=new_user.lastname,
+        email=new_user.email,
+    )
+
+
+@app.post("/token", response_model=Token)
+def get_access_token(formdata: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(formdata.username, formdata.password)
+    if not user:
+        raise StartletteHTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token = jwt.encode(
+        {"username": user.username, "email": user.email},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+    return Token(access_token=access_token, token_type="bearer")
+
+@app.get('/users/me', response_model=User)
+def get_me(current_user: User = Depends(get_user_from_token_string)):
+    return current_user
