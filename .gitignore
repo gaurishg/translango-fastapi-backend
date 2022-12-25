@@ -7,3 +7,5 @@ traced-model.pt
 __pycache__
 runs
 .vscode
+.env
+*.sqlite

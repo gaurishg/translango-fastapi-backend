@@ -47,3 +47,4 @@ python-jose[cryptography]
 passlib[bcrypt]
 sqlmodel
 google-cloud-translate
+python-dotenv
