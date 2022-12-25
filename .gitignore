@@ -6,3 +6,4 @@ traced-model.pt
 .cache
 __pycache__
 runs
+.vscode
