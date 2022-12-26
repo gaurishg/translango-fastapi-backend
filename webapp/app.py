@@ -25,7 +25,8 @@ import bcrypt
 # import secrets
 from pydantic import BaseModel
 
-from database import User, UserFromFrontend, UserInDB, engine
+from database import User, UserFromFrontend, UserInDB, engine, SQLModel
+import add_data
 
 app: FastAPI = FastAPI()
 
@@ -98,6 +99,11 @@ class SampleMiddleWare(BaseHTTPMiddleware):
 
 app.add_middleware(SampleMiddleWare)
 app.add_middleware(CORSMiddleware, allow_origins=['*'])
+
+@app.on_event("startup") # type: ignore
+def on_startup():
+    SQLModel.metadata.create_all(bind=engine)
+    add_data.add_data()
 
 @app.get("/admin/users", tags=["Admin"])
 def admin_get_all_users(session: Session=Depends(get_session)):
