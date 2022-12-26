@@ -14,7 +14,7 @@ from typing import List, Dict, Tuple, Optional  # type: ignore
 from fastapi import FastAPI, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-
+from sqlmodel import Session
 # from passlib.context import CryptContext
 from jose import jwt, JWTError
 from starlette.exceptions import HTTPException as StartletteHTTPException
@@ -24,11 +24,8 @@ from starlette.responses import Response
 import bcrypt
 # import secrets
 from pydantic import BaseModel
-from dotenv import load_dotenv  # type: ignore
 
-load_dotenv()
-
-from database import User, UserFromFrontend, UserInDB, db
+from database import User, UserFromFrontend, UserInDB, engine
 
 app: FastAPI = FastAPI()
 
@@ -52,8 +49,13 @@ class TokenData(BaseModel):
     email: str
 
 
-def authenticate_user(username: str, password: str):
-    user = UserInDB.get_from_username(username=username)
+def get_session():
+    with Session(bind=engine) as db:
+        yield db
+
+
+def authenticate_user(username: str, password: str, session: Session=Depends(get_session)):
+    user = session.get(UserInDB, username)
     if user is None:
         return False
     if not bcrypt.checkpw(
@@ -62,7 +64,7 @@ def authenticate_user(username: str, password: str):
         return False
     return user
 
-def get_user_from_token_string(token_string: str = Depends(oauth2_scheme)):
+def get_user_from_token_string(token_string: str = Depends(oauth2_scheme), session: Session=Depends(get_session)):
     credentials_exception = StartletteHTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -77,7 +79,7 @@ def get_user_from_token_string(token_string: str = Depends(oauth2_scheme)):
         email = payload.get("email")
         if username is None or email is None:
             raise credentials_exception
-        user = UserInDB.get_from_username(username=username)
+        user = session.get(UserInDB, username)
         if user is None:
             raise credentials_exception
         return user
@@ -98,13 +100,13 @@ app.add_middleware(SampleMiddleWare)
 app.add_middleware(CORSMiddleware, allow_origins=['*'])
 
 @app.get("/admin/users", tags=["Admin"])
-def admin_get_all_users():
-    result: List[UserInDB] = db.query(UserInDB).all()
+def admin_get_all_users(session: Session=Depends(get_session)):
+    result: List[UserInDB] = session.query(UserInDB).all()
     return [User.from_user_in_db(user) for user in result]
 
 
 @app.post("/admin/create-user", tags=["Admin"])
-def admin_create_user(user_with_pass: UserFromFrontend):
+def admin_create_user(user_with_pass: UserFromFrontend, session: Session=Depends(get_session)):
     password = user_with_pass.password
     salt = bcrypt.gensalt()
     password_hash = bcrypt.hashpw(password=password.encode("utf-8"), salt=salt)
@@ -117,8 +119,8 @@ def admin_create_user(user_with_pass: UserFromFrontend):
         hashed_password=password_hash,
         salt=salt,
     )
-    db.add(new_user)
-    db.commit()
+    session.add(new_user)
+    session.commit()
     return User(
         username=new_user.username,
         firstname=new_user.firstname,

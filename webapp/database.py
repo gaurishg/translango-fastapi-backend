@@ -1,5 +1,5 @@
 from sqlmodel import Field # type: ignore
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import SQLModel, create_engine
 from sqlalchemy.orm import declared_attr
 from typing import Optional
 
@@ -33,10 +33,5 @@ class UserInDB(User, table=True):
     hashed_password: bytes
     salt: bytes
 
-    @staticmethod
-    def get_from_username(username: str) -> Optional["UserInDB"]:
-        user: Optional[UserInDB] = db.query(UserInDB).where(UserInDB.username == username).first()
-        return user
-
-SQLModel.metadata.create_all(bind=engine)
-db = Session(bind=engine)
+if __name__ == '__main__':
+    SQLModel.metadata.create_all(bind=engine)
