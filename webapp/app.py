@@ -25,7 +25,7 @@ import bcrypt
 # import secrets
 from pydantic import BaseModel
 
-from database import User, UserFromFrontend, UserInDB, engine, SQLModel
+from database import User, UserFromFrontend, UserInDB, engine, SQLModel, UserToFrontend
 import add_data
 
 app: FastAPI = FastAPI()
@@ -105,10 +105,10 @@ def on_startup():
     SQLModel.metadata.create_all(bind=engine)
     add_data.add_data()
 
-@app.get("/admin/users", tags=["Admin"])
+@app.get("/admin/users", tags=["Admin"], response_model=List[UserToFrontend])
 def admin_get_all_users(session: Session=Depends(get_session)):
     result: List[UserInDB] = session.query(UserInDB).all()
-    return [User.from_orm(user) for user in result]
+    return [UserToFrontend.from_orm(user) for user in result]
 
 
 @app.post("/admin/create-user", tags=["Admin"])
@@ -117,23 +117,13 @@ def admin_create_user(user_with_pass: UserFromFrontend, session: Session=Depends
     salt = bcrypt.gensalt()
     password_hash = bcrypt.hashpw(password=password.encode("utf-8"), salt=salt)
     new_user = UserInDB(
-        username=user_with_pass.username,
-        firstname=user_with_pass.firstname,
-        middlename=user_with_pass.middlename,
-        lastname=user_with_pass.lastname,
-        email=user_with_pass.email,
+        **user_with_pass.dict(),
         hashed_password=password_hash,
         salt=salt,
     )
     session.add(new_user)
     session.commit()
-    return User(
-        username=new_user.username,
-        firstname=new_user.firstname,
-        middlename=new_user.middlename,
-        lastname=new_user.lastname,
-        email=new_user.email,
-    )
+    return User.from_orm(new_user)
 
 
 @app.post("/token", response_model=Token)

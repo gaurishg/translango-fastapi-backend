@@ -14,7 +14,8 @@ def add_sample_user():
             firstname='user',
             email='user@example.com',
             hashed_password=hashed_pw,
-            salt=salt
+            salt=salt,
+            primary_lang='en'
         )
         session.add(user)
         session.commit()
@@ -33,5 +34,5 @@ def add_languages():
             session.commit()
 
 def add_data():
-    add_sample_user()
     add_languages()
+    add_sample_user()
