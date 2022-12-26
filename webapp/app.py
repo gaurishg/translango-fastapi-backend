@@ -102,7 +102,7 @@ app.add_middleware(CORSMiddleware, allow_origins=['*'])
 @app.get("/admin/users", tags=["Admin"])
 def admin_get_all_users(session: Session=Depends(get_session)):
     result: List[UserInDB] = session.query(UserInDB).all()
-    return [User.from_user_in_db(user) for user in result]
+    return [User.from_orm(user) for user in result]
 
 
 @app.post("/admin/create-user", tags=["Admin"])

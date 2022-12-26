@@ -12,16 +12,6 @@ class User(SQLModel):
     lastname: Optional[str]
     email: str = Field(unique=True, nullable=False)
 
-    @staticmethod
-    def from_user_in_db(u: "UserInDB") -> "User":
-        return User(
-            username=u.firstname,
-            firstname=u.firstname,
-            middlename=u.middlename,
-            lastname=u.lastname,
-            email=u.email
-        )
-
 class UserFromFrontend(User):
     password: str
 
