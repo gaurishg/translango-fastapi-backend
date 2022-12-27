@@ -55,8 +55,9 @@ class UserInDB(User, table=True):
     primary_language: Language = Relationship(back_populates="users_with_primary_language")
     favourite_languages: List[Language] = Relationship(back_populates="users_with_favourite_languages", link_model=UserFavLangs)
 
-class UserToFrontend(UserInDB):
-    pass
+class UserToFrontend(User):
+    primary_language: Optional[Language] = None
+    favourite_languages: List[Language] = []
 
 
 if __name__ == '__main__':

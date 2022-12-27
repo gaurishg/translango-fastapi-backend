@@ -108,7 +108,8 @@ def on_startup():
 @app.get("/admin/users", tags=["Admin"], response_model=List[UserToFrontend])
 def admin_get_all_users(session: Session=Depends(get_session)):
     result: List[UserInDB] = session.query(UserInDB).all()
-    return [UserToFrontend.from_orm(user) for user in result]
+    # return [UserToFrontend.from_orm(user) for user in result]
+    return result
 
 
 @app.post("/admin/create-user", tags=["Admin"])
