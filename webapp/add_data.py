@@ -17,6 +17,7 @@ def add_sample_user():
             salt=salt,
             primary_lang='en'
         )
+        user.favourite_languages.append(session.get(Language, 'ja')) # type: ignore
         session.add(user)
         session.commit()
 
