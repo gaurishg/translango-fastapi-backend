@@ -11,7 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(current_path, "..", "yolov7")))
 # import yolov7.translango
 from typing import List, Dict, Tuple, Optional  # type: ignore
 
-from fastapi import FastAPI, Depends, status
+from fastapi import FastAPI, Depends, status, File, UploadFile
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
@@ -24,8 +24,9 @@ from starlette.responses import Response
 import bcrypt
 # import secrets
 from pydantic import BaseModel
+from PIL import Image, ImageOps
 
-from database import User, UserFromFrontend, UserInDB, engine, SQLModel, UserToFrontend
+from database import User, UserFromFrontend, UserInDB, engine, SQLModel, UserToFrontend, Language
 import add_data
 
 app: FastAPI = FastAPI()
@@ -105,15 +106,14 @@ def on_startup():
     SQLModel.metadata.create_all(bind=engine)
     add_data.add_data()
 
-@app.get("/admin/users", tags=["Admin"], response_model=List[UserToFrontend])
-def admin_get_all_users(session: Session=Depends(get_session)):
+@app.get("/testing/users", tags=["Testing"], response_model=List[UserToFrontend])
+def testing_get_all_users(session: Session=Depends(get_session)):
     result: List[UserInDB] = session.query(UserInDB).all()
-    # return [UserToFrontend.from_orm(user) for user in result]
     return result
 
 
-@app.post("/admin/create-user", tags=["Admin"])
-def admin_create_user(user_with_pass: UserFromFrontend, session: Session=Depends(get_session)):
+@app.post("/testing/create-user", tags=["Testing"])
+def testing_create_user(user_with_pass: UserFromFrontend, session: Session=Depends(get_session)):
     password = user_with_pass.password
     salt = bcrypt.gensalt()
     password_hash = bcrypt.hashpw(password=password.encode("utf-8"), salt=salt)
@@ -125,6 +125,18 @@ def admin_create_user(user_with_pass: UserFromFrontend, session: Session=Depends
     session.add(new_user)
     session.commit()
     return User.from_orm(new_user)
+
+
+@app.get('/testing/languages', tags=['Testing'], response_model=List[Language])
+def testing_get_all_languages(session: Session=Depends(get_session)) -> List[Language]:
+    return session.query(Language).all()
+
+
+@app.post('/testing/upload-image', tags=['Testing'])
+def testing_upload_image(session: Session=Depends(get_session), file: UploadFile=File()):
+    image = Image.open(file.file).convert("RGB")
+    image = ImageOps.contain(image=image, size=(1280, 720))
+    return image.size
 
 
 @app.post("/token", response_model=Token)
