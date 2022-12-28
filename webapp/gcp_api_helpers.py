@@ -1,18 +1,36 @@
 import pydantic
 from typing import Optional, List, Literal, Any
-from google.cloud import vision  # type: ignore
+from google.cloud import vision, translate_v2  # type: ignore
+import functools
+import aws_api_helpers
+from database import Language
+
+
+class CloudTranslateResponse(pydantic.BaseModel):
+    translatedText: str
+    detectedSourceLanguage: Optional[str] = pydantic.Field(default=None)
+    input: str
+    model: Optional[str] = pydantic.Field(default=None)
+
+    class Config:
+        orm_mode = True
+
+
+@functools.lru_cache(maxsize=2048)
+def text_translate(
+    text: str, target_lang: str, source_lang: Optional[str] = None
+) -> "CloudTranslateResponse":
+    client = translate_v2.Client()
+    response = client.translate(  # type: ignore
+        values=text, target_language=target_lang, source_language=source_lang
+    )
+    return CloudTranslateResponse.parse_obj(response)
 
 
 class CloudVisionFromURIRequest(pydantic.BaseModel):
     class Feature(pydantic.BaseModel):
         maxResults: Optional[int] = pydantic.Field(default=None)
         type: Literal["OBJECT_LOCALIZATION"] = "OBJECT_LOCALIZATION"
-
-        class Config:
-            orm_mode = True
-
-    class Features(pydantic.BaseModel):
-        __root__: List["CloudVisionFromURIRequest.Feature"]
 
         class Config:
             orm_mode = True
@@ -66,8 +84,16 @@ class CloudVisionLocalizedObjectAnnotation(pydantic.BaseModel):
     class Config:
         orm_mode = True
 
+    class GCPAnnotation(pydantic.BaseModel):
+        mid: str
+        name: str
+        score: float
+        bounding_poly: Any
+
     @staticmethod
-    def from_single_annotation(annotation) -> "CloudVisionLocalizedObjectAnnotation":
+    def from_single_annotation(
+        annotation: "CloudVisionLocalizedObjectAnnotation.GCPAnnotation",
+    ) -> "CloudVisionLocalizedObjectAnnotation":
         obj: CloudVisionLocalizedObjectAnnotation = (
             CloudVisionLocalizedObjectAnnotation(
                 mid=annotation.mid,
@@ -84,29 +110,77 @@ class CloudVisionLocalizedObjectAnnotation(pydantic.BaseModel):
         return obj
 
 
+class Translation(pydantic.BaseModel):
+    language: str
+    translation: str
+
+    class Config:
+        orm_mode = True
+
+
+class CloudVisionAnnotationsWithTranslations(CloudVisionLocalizedObjectAnnotation):
+    translations: List[Translation] = pydantic.Field(default_factory=list)
+
+
 class CloudVisionResponse(pydantic.BaseModel):
-    __root__: List[CloudVisionLocalizedObjectAnnotation]
+    detections: List[CloudVisionLocalizedObjectAnnotation]
 
     class Config:
         orm_mode = True
 
     @staticmethod
-    def from_response(response) -> "CloudVisionResponse":
+    def from_response(response) -> "CloudVisionResponse":  # type: ignore
         obj = CloudVisionResponse(
-            __root__=[
-                CloudVisionLocalizedObjectAnnotation.from_single_annotation(annotation)
-                for annotation in response.localized_object_annotations
+            detections=[
+                CloudVisionLocalizedObjectAnnotation.from_single_annotation(annotation)  # type: ignore
+                for annotation in response.localized_object_annotations  # type: ignore
             ]
         )
         return obj
 
 
-def object_detection_from_url(url: pydantic.FileUrl):
+class CloudVisionAndTranslation(pydantic.BaseModel):
+    detections: List[
+        CloudVisionAnnotationsWithTranslations
+    ] = pydantic.Field(default_factory=list)
+
+    class Config:
+        orm_mode = True
+
+
+def object_detection_from_url(url: pydantic.FileUrl) -> CloudVisionResponse:
     client = vision.ImageAnnotatorClient()
     image = vision.Image()
     image.source.image_uri = url
-    response = client.object_localization(image)
-    return response
+    response = client.object_localization(image)  # type: ignore
+    return CloudVisionResponse.from_response(response)  # type: ignore
+
+
+@functools.lru_cache(maxsize=2048)
+def object_detection_from_s3(image_name: str) -> CloudVisionResponse:
+    presigned_url = aws_api_helpers.create_presigned_url(image_name)
+    return object_detection_from_url(presigned_url)
+
+
+def add_translation_to_CloudVisionDetections(
+    detections: CloudVisionResponse,
+    target_languages: List[Language] = pydantic.Field(min_items=1),
+) -> CloudVisionAndTranslation:
+    obj = CloudVisionAndTranslation.parse_obj(detections.dict())
+    for detection in detections.detections:
+        obj.detections.append(
+            CloudVisionAnnotationsWithTranslations(**detection.dict(), translations=[])
+        )
+        for target_lang in target_languages:
+            obj.detections[-1].translations.append(
+                Translation(
+                    language=target_lang.code,
+                    translation=text_translate(
+                        detection.name, target_lang.code
+                    ).translatedText,
+                )
+            )
+    return obj
 
 
 def main():
@@ -115,8 +189,14 @@ def main():
     image.source.image_uri = (
         "https://cloud.google.com/vision/docs/images/bicycle_example.png"
     )
-    response = CloudVisionResponse.from_response(client.object_localization(image))
-    print(response.json())
+    vision_response = CloudVisionResponse.from_response(  # type: ignore
+        client.object_localization(image)  # type: ignore
+    )
+    vision_response_with_translations = add_translation_to_CloudVisionDetections(
+        vision_response, [Language(code="hi")]
+    )
+    print(vision_response_with_translations)
+    print(text_translate("hello", "hi"))
 
 
 if __name__ == "__main__":

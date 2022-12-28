@@ -14,7 +14,7 @@ from database import (
     Language,
 )
 from PIL import Image, ImageOps
-from pydantic import BaseModel, FileUrl
+from pydantic import BaseModel, Field #type: ignore
 import bcrypt
 from starlette.responses import Response
 from starlette.requests import Request
@@ -24,7 +24,7 @@ from jose import jwt, JWTError
 from sqlmodel import Session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi import FastAPI, Depends, status, File, UploadFile
+from fastapi import FastAPI, Depends, status, File, UploadFile, Body #type: ignore
 from typing import List, Dict, Tuple, Optional  # type: ignore
 import sys
 import os
@@ -114,7 +114,7 @@ class SampleMiddleWare(BaseHTTPMiddleware):
         return response
 
 
-app.add_middleware(SampleMiddleWare)
+# app.add_middleware(SampleMiddleWare)
 app.add_middleware(CORSMiddleware, allow_origins=["*"])
 
 
@@ -149,25 +149,36 @@ def testing_create_user(
     return User.from_orm(new_user)
 
 
-@app.get("/testing/languages", tags=["Testing"], response_model=List[Language])
+@app.get("/testing/languages", tags=["Testing"], response_model=List[str])
 def testing_get_all_languages(
     session: Session = Depends(get_session),
-) -> List[Language]:
-    return session.query(Language).all()
+) -> List[str]:
+    return [lang.code for lang in session.query(Language).all()]
 
 
-@app.post("/testing/upload-image", tags=["Testing"], response_model=gcp_api_helpers.CloudVisionResponse)
+@app.post(
+    "/testing/upload-image",
+    tags=["Testing"],
+    response_model=gcp_api_helpers.CloudVisionAndTranslation,
+)
 def testing_upload_image(
-    session: Session = Depends(get_session), file: UploadFile = File()
+    *,
+    session: Session = Depends(get_session),
+    file: UploadFile = File(),
+    target_languages: List[str],
 ):
+    target_languages = target_languages[0].split(',')
     image = Image.open(file.file).convert("RGB")
     image = ImageOps.contain(image=image, size=(1280, 720))
     uploaded_image = aws_api_helpers.upload_PIL_Image_to_s3(image=image)
     image_name = uploaded_image.key
-    presigned_url = aws_api_helpers.create_presigned_url(image_name)
-    response = gcp_api_helpers.object_detection_from_url(presigned_url)
-    response = gcp_api_helpers.CloudVisionResponse.from_response(response)
-    return response
+    detections = gcp_api_helpers.object_detection_from_s3(image_name)
+    detections_with_translation = (
+        gcp_api_helpers.add_translation_to_CloudVisionDetections(
+            detections=detections, target_languages=[Language(code=l) for l in target_languages]
+        )
+    )
+    return detections_with_translation
 
 
 @app.post("/token", response_model=Token)
