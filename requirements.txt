@@ -48,3 +48,4 @@ passlib[bcrypt]
 sqlmodel
 google-cloud-translate
 python-dotenv
+boto3[crt]
