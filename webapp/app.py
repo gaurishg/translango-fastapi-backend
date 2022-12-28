@@ -1,5 +1,31 @@
 # app.py
 
+from google.cloud import translate_v2 as google_translate  # type: ignore
+import gcp_api_helpers
+import aws_api_helpers
+import add_data
+from database import (
+    User,
+    UserFromFrontend,
+    UserInDB,
+    engine,
+    SQLModel,
+    UserToFrontend,
+    Language,
+)
+from PIL import Image, ImageOps
+from pydantic import BaseModel, FileUrl
+import bcrypt
+from starlette.responses import Response
+from starlette.requests import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StartletteHTTPException
+from jose import jwt, JWTError
+from sqlmodel import Session
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import FastAPI, Depends, status, File, UploadFile
+from typing import List, Dict, Tuple, Optional  # type: ignore
 import sys
 import os
 import time
@@ -9,25 +35,9 @@ sys.path.append(os.path.abspath(os.path.join(current_path, "..")))
 sys.path.append(os.path.abspath(os.path.join(current_path, "..", "yolov7")))
 # print(sys.path)
 # import yolov7.translango
-from typing import List, Dict, Tuple, Optional  # type: ignore
 
-from fastapi import FastAPI, Depends, status, File, UploadFile
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session
 # from passlib.context import CryptContext
-from jose import jwt, JWTError
-from starlette.exceptions import HTTPException as StartletteHTTPException
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
-import bcrypt
 # import secrets
-from pydantic import BaseModel
-from PIL import Image, ImageOps
-
-from database import User, UserFromFrontend, UserInDB, engine, SQLModel, UserToFrontend, Language
-import add_data
 
 app: FastAPI = FastAPI()
 
@@ -56,7 +66,9 @@ def get_session():
         yield db
 
 
-def authenticate_user(username: str, password: str, session: Session=Depends(get_session)):
+def authenticate_user(
+    username: str, password: str, session: Session = Depends(get_session)
+):
     user = session.get(UserInDB, username)
     if user is None:
         return False
@@ -66,7 +78,10 @@ def authenticate_user(username: str, password: str, session: Session=Depends(get
         return False
     return user
 
-def get_user_from_token_string(token_string: str = Depends(oauth2_scheme), session: Session=Depends(get_session)):
+
+def get_user_from_token_string(
+    token_string: str = Depends(oauth2_scheme), session: Session = Depends(get_session)
+):
     credentials_exception = StartletteHTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -90,30 +105,37 @@ def get_user_from_token_string(token_string: str = Depends(oauth2_scheme), sessi
 
 
 class SampleMiddleWare(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next) -> Response: # type: ignore
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore
         # return await super().dispatch(request, call_next)
         start_time = time.time()
         response: Response = await call_next(request)
         process_time = time.time() - start_time
-        response.headers['X-Process-Time'] = str(process_time)
+        response.headers["X-Process-Time"] = str(process_time)
         return response
 
-app.add_middleware(SampleMiddleWare)
-app.add_middleware(CORSMiddleware, allow_origins=['*'])
 
-@app.on_event("startup") # type: ignore
+app.add_middleware(SampleMiddleWare)
+app.add_middleware(CORSMiddleware, allow_origins=["*"])
+
+
+@app.on_event("startup")  # type: ignore
 def on_startup():
     SQLModel.metadata.create_all(bind=engine)
     add_data.add_data()
+    # print(google_translate.Client().translate("Hello", target_language='hi')) #type: ignore
+    # print(google_translate.Client().get_languages(target_language='hi')) #type: ignore
+
 
 @app.get("/testing/users", tags=["Testing"], response_model=List[UserToFrontend])
-def testing_get_all_users(session: Session=Depends(get_session)):
+def testing_get_all_users(session: Session = Depends(get_session)):
     result: List[UserInDB] = session.query(UserInDB).all()
     return result
 
 
 @app.post("/testing/create-user", tags=["Testing"])
-def testing_create_user(user_with_pass: UserFromFrontend, session: Session=Depends(get_session)):
+def testing_create_user(
+    user_with_pass: UserFromFrontend, session: Session = Depends(get_session)
+):
     password = user_with_pass.password
     salt = bcrypt.gensalt()
     password_hash = bcrypt.hashpw(password=password.encode("utf-8"), salt=salt)
@@ -127,16 +149,25 @@ def testing_create_user(user_with_pass: UserFromFrontend, session: Session=Depen
     return User.from_orm(new_user)
 
 
-@app.get('/testing/languages', tags=['Testing'], response_model=List[Language])
-def testing_get_all_languages(session: Session=Depends(get_session)) -> List[Language]:
+@app.get("/testing/languages", tags=["Testing"], response_model=List[Language])
+def testing_get_all_languages(
+    session: Session = Depends(get_session),
+) -> List[Language]:
     return session.query(Language).all()
 
 
-@app.post('/testing/upload-image', tags=['Testing'])
-def testing_upload_image(session: Session=Depends(get_session), file: UploadFile=File()):
+@app.post("/testing/upload-image", tags=["Testing"], response_model=gcp_api_helpers.CloudVisionResponse)
+def testing_upload_image(
+    session: Session = Depends(get_session), file: UploadFile = File()
+):
     image = Image.open(file.file).convert("RGB")
     image = ImageOps.contain(image=image, size=(1280, 720))
-    return image.size
+    uploaded_image = aws_api_helpers.upload_PIL_Image_to_s3(image=image)
+    image_name = uploaded_image.key
+    presigned_url = aws_api_helpers.create_presigned_url(image_name)
+    response = gcp_api_helpers.object_detection_from_url(presigned_url)
+    response = gcp_api_helpers.CloudVisionResponse.from_response(response)
+    return response
 
 
 @app.post("/token", response_model=Token)
@@ -157,6 +188,7 @@ def get_access_token(formdata: OAuth2PasswordRequestForm = Depends()):
 
     return Token(access_token=access_token, token_type="bearer")
 
-@app.get('/users/me', response_model=User)
+
+@app.get("/users/me", response_model=User)
 def get_me(current_user: User = Depends(get_user_from_token_string)):
     return current_user
