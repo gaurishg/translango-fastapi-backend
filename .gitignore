@@ -9,3 +9,4 @@ runs
 .vscode
 .env
 *.sqlite
+SECRETS
