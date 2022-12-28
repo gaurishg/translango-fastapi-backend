@@ -38,7 +38,7 @@ def upload_image_fileobj_to_s3(image: bytes) -> S3Object:
     return S3Object.from_orm(translango_bucket.put_object(Key=name, Body=image))
 
 
-def create_presigned_url(object_name, expiration=DEFAULT_EXPIRATION_TIME_FOR_PRESIGNED_URLS) -> pydantic.FileUrl:
+def create_presigned_url(object_name: str, expiration=DEFAULT_EXPIRATION_TIME_FOR_PRESIGNED_URLS) -> pydantic.FileUrl:
     """Generate a presigned URL to share an S3 object
 
     :param bucket_name: string
