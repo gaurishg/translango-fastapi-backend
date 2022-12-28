@@ -3,17 +3,25 @@ import os
 
 import torch
 
-from models.experimental import attempt_load
-from utils.datasets import LoadImages, TransformImage
-from utils.general import check_img_size, non_max_suppression, \
-    scale_coords, xyxy2xywh, set_logging
-from utils.torch_utils import select_device, time_synchronized
+from models.experimental import attempt_load #type: ignore
+from utils.datasets import TransformImage
+from utils.general import check_img_size, non_max_suppression, scale_coords, xyxy2xywh, set_logging #type: ignore
+from utils.torch_utils import select_device, time_synchronized #type: ignore
 import numpy as np
 
 from typing import List, Dict
 import io
 import urllib.request
 from PIL import Image
+from pydantic import BaseModel, Field
+
+class Detection(BaseModel):
+    object_id: int
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+    w: float = Field(ge=0.0, le=1.0)
+    h: float = Field(ge=0.0, le=1.0)
+    conf: float = Field(ge=0.0, le=1.0)
 
 set_logging()
 imgsz = 640
@@ -27,8 +35,8 @@ if os.path.exists('/yolov7/yolov7x.pt'):
     weights = '/yolov7/yolov7x.pt'
 # Initialize
 model = attempt_load(weights, map_location=device)  # load FP32 model
-stride = int(model.stride.max())  # model stride
-imgsz = check_img_size(imgsz, s=stride)  # check img_size
+stride = int(model.stride.max())  # type: ignore , model stride 
+imgsz: int = check_img_size(imgsz, s=stride)  # check img_size
 
 if half:
     model.half()  # to FP16
@@ -38,16 +46,15 @@ if device.type != 'cpu':
     model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
 
 
-def translango_detect(img_array: np.ndarray) -> List[Dict]:
-    predictions: List[Dict] = []
+def translango_detect(img_array: np.ndarray) -> List[Detection]:
+    predictions: List[Detection] = []
 
     # Set Dataloader
     # dataset = LoadImages(source, img_size=imgsz, stride=stride)
     image_transformer = TransformImage(img=img_array)
 
     # Get names and colors
-    names = model.module.names if hasattr(model, 'module') else model.names
-
+    names: List[str] = model.module.names if hasattr(model, 'module') else model.names # type: ignore
     old_img_w = old_img_h = imgsz
     old_img_b = 1
 
@@ -87,24 +94,24 @@ def translango_detect(img_array: np.ndarray) -> List[Dict]:
 
             # Write results
             for *xyxy, conf, cls in reversed(det):
-                xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # type:ignore normalized xywh
                 # line = Prediction(cls, *xywh, conf)  # label format
                 x, y, w, h = xywh
-                predictions.append({
+                predictions.append(Detection.from_orm({
                     "id": int(cls.item()),
-                    "name": names[int(cls.item())],
+                    # "name": names[int(cls.item())],
                     "x": x,
                     "y": y,
                     "w": w,
                     "h": h,
                     "conf": conf.item()
-                })
+                }))
     t4 = time_synchronized()
     print(f'Ran in {1000 * (t4 - t0)} m seconds')
     return predictions
 
 
-def translango_detect_from_url(url: str) -> List[Dict]:
+def translango_detect_from_url(url: str) -> List[Detection]:
     with urllib.request.urlopen(url) as url_f:
         f_handle = io.BytesIO(url_f.read())
         img = Image.open(f_handle)

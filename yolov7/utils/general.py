@@ -173,7 +173,7 @@ def check_dataset(dict):
                 raise Exception('Dataset not found.')
 
 
-def make_divisible(x, divisor):
+def make_divisible(x: int, divisor: int) -> int:
     # Returns x evenly divisible by divisor
     return math.ceil(x / divisor) * divisor
 
