@@ -1,8 +1,9 @@
 from database import UserInDB, engine, Language
 from sqlmodel import Session
 import bcrypt
-import json
+from google.cloud import translate_v2 as google_translate # type: ignore
 import pydantic
+from typing import List
 
 def add_sample_user():
     password = 'password'.encode('utf-8')
@@ -23,16 +24,14 @@ def add_sample_user():
 
 def add_languages():
     class InputLang(pydantic.BaseModel):
-        code: str
+        language: str
         name: str
-        nativeName: str
     
-    with Session(engine) as session:
-        with open('iso639_1.json') as f_handle:
-            data = [InputLang(**lang) for lang in json.load(f_handle)]
-            data = [Language(iso639_1code=lang.code, name_in_en=lang.name) for lang in data]
-            session.add_all(data)
-            session.commit()
+    with Session(bind=engine) as session:
+        langs: List[InputLang] = [InputLang(**lang) for lang in google_translate.Client().get_languages()] #type: ignore
+        languages: List[Language] = [Language(code=lang.language) for lang in langs]
+        session.add_all(languages)
+        session.commit()
 
 def add_data():
     add_languages()
