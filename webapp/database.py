@@ -16,11 +16,10 @@ engine = create_engine(
 
 class UserFavLangs(SQLModel, table=True):
     username: str = Field(primary_key=True, foreign_key="users.username")
-    iso639_1code: str = Field(primary_key=True, foreign_key="languages.iso639_1code", min_length=2, max_length=2)
+    code: str = Field(primary_key=True, foreign_key="languages.code")
 
 class Language(SQLModel, table=True):
-    iso639_1code: str = Field(primary_key=True, nullable=False, min_length=2, max_length=2)
-    name_in_en: str
+    code: str = Field(primary_key=True, nullable=False, min_length=2)
 
     users_with_primary_language: List["UserInDB"] = Relationship(back_populates="primary_language")
     users_with_favourite_languages: List["UserInDB"] = Relationship(back_populates="favourite_languages", link_model=UserFavLangs)
@@ -30,7 +29,7 @@ class Language(SQLModel, table=True):
         return "languages"
 
     def __repr__(self) -> str:
-        return f"Language({self.iso639_1code}: {self.name_in_en})"
+        return f"Language({self.code})"
 
 class User(SQLModel): 
     username: str = Field(primary_key=True)
@@ -38,7 +37,7 @@ class User(SQLModel):
     middlename: Optional[str] = Field(default=None)
     lastname: Optional[str] = Field(default=None)
     email: str = Field(unique=True, nullable=False)
-    primary_lang: str = Field(nullable=False, foreign_key="languages.iso639_1code", min_length=2, max_length=2)
+    primary_lang: str = Field(nullable=False, foreign_key="languages.code", min_length=2)
     
 
 class UserFromFrontend(User):
