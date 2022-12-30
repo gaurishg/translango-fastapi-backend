@@ -107,7 +107,10 @@ class SampleMiddleWare(BaseHTTPMiddleware):
 # app.add_middleware(SampleMiddleWare)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://frontend.d2e7dlzpkoas0a.amplifyapp.com/",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
