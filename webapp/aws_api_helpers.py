@@ -33,9 +33,9 @@ def upload_PIL_Image_to_s3(image: Image.Image) -> S3Object:
     in_mem_file.seek(0)
     return S3Object.from_orm(translango_bucket.put_object(Key=name, Body=in_mem_file)) #type: ignore
 
-def upload_image_fileobj_to_s3(image: bytes) -> S3Object:
-    name = hashlib.sha512(image).hexdigest() + '.' + IMG_FORMAT
-    return S3Object.from_orm(translango_bucket.put_object(Key=name, Body=image)) #type: ignore
+# def upload_image_fileobj_to_s3(image: bytes) -> S3Object:
+#     name = hashlib.sha512(image).hexdigest() + '.' + IMG_FORMAT
+#     return S3Object.from_orm(translango_bucket.put_object(Key=name, Body=image)) #type: ignore
 
 
 def create_presigned_url(object_name: str, expiration: int=DEFAULT_EXPIRATION_TIME_FOR_PRESIGNED_URLS) -> pydantic.FileUrl:
