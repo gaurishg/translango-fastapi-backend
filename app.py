@@ -1,6 +1,5 @@
 # app.py
 
-from google.cloud import translate_v2 as google_translate  # type: ignore
 import gcp_api_helpers
 import aws_api_helpers
 import add_data
@@ -27,18 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import FastAPI, Depends, status, File, UploadFile, Body  # type: ignore
 from typing import List, Dict, Tuple, Optional  # type: ignore
-import sys
 import os
 import time
-
-current_path = sys.path[0]
-sys.path.append(os.path.abspath(os.path.join(current_path, "..")))
-sys.path.append(os.path.abspath(os.path.join(current_path, "..", "yolov7")))
-# print(sys.path)
-# import yolov7.translango
-
-# from passlib.context import CryptContext
-# import secrets
 
 app: FastAPI = FastAPI()
 
@@ -118,7 +107,7 @@ class SampleMiddleWare(BaseHTTPMiddleware):
 # app.add_middleware(SampleMiddleWare)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
