@@ -109,7 +109,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://frontend.d2e7dlzpkoas0a.amplifyapp.com/",
+        "https://frontend.d2e7dlzpkoas0a.amplifyapp.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
