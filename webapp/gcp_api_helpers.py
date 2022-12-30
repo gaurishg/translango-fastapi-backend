@@ -3,12 +3,18 @@ from typing import Optional, List, Literal, Any
 from google.cloud import vision, translate_v2  # type: ignore
 import functools
 import aws_api_helpers
-from database import Language
+from database import LanguageInDB, Language
+
+vision_client = vision.ImageAnnotatorClient()
+translate_client = translate_v2.Client()
 
 
-class CloudTranslateResponse(pydantic.BaseModel):
+class TextTranslateResponseToFrontend(pydantic.BaseModel):
     translatedText: str
-    detectedSourceLanguage: Optional[str] = pydantic.Field(default=None)
+    detectedSourceLanguage: Optional[str] = pydantic.Field(default=None, alias="source_lang")
+
+
+class CloudTranslateResponse(TextTranslateResponseToFrontend):
     input: str
     model: Optional[str] = pydantic.Field(default=None)
 
@@ -20,12 +26,16 @@ class CloudTranslateResponse(pydantic.BaseModel):
 def text_translate(
     text: str, target_lang: str, source_lang: Optional[str] = None
 ) -> "CloudTranslateResponse":
-    client = translate_v2.Client()
-    response = client.translate(  # type: ignore
+    response = translate_client.translate(  # type: ignore
         values=text, target_language=target_lang, source_language=source_lang
     )
     return CloudTranslateResponse.parse_obj(response)
 
+
+@functools.lru_cache(maxsize=2048)
+def get_languages(target_lang: str='en'):
+    languages = translate_client.get_languages(target_language=target_lang) #type: ignore
+    return [Language(code=l['language'], name=l['name']) for l in languages] #type: ignore
 
 class CloudVisionFromURIRequest(pydantic.BaseModel):
     class Feature(pydantic.BaseModel):
@@ -149,11 +159,22 @@ class CloudVisionAndTranslation(pydantic.BaseModel):
 
 
 def object_detection_from_url(url: pydantic.FileUrl) -> CloudVisionResponse:
-    client = vision.ImageAnnotatorClient()
     image = vision.Image()
     image.source.image_uri = url
-    response = client.object_localization(image)  # type: ignore
+    response = vision_client.object_localization(image)  # type: ignore
     return CloudVisionResponse.from_response(response)  # type: ignore
+
+
+class CloudVisionTextDetection(pydantic.BaseModel):
+    class Config:
+        orm_mode=True
+    locale: str
+    description: str
+    bounding_poly: CloudVisionBoundingPoly
+
+
+class CloudVisionTextDetectionWithSourceLang(CloudVisionTextDetection):
+    source_lang: str
 
 
 @functools.lru_cache(maxsize=2048)
@@ -164,7 +185,7 @@ def object_detection_from_s3(image_name: str) -> CloudVisionResponse:
 
 def add_translation_to_CloudVisionDetections(
     detections: CloudVisionResponse,
-    target_languages: List[Language] = pydantic.Field(min_items=1),
+    target_languages: List[LanguageInDB] = pydantic.Field(min_items=1),
 ) -> CloudVisionAndTranslation:
     obj = CloudVisionAndTranslation.parse_obj(detections.dict())
     for detection in detections.detections:
@@ -184,19 +205,13 @@ def add_translation_to_CloudVisionDetections(
 
 
 def main():
-    client = vision.ImageAnnotatorClient()
     image = vision.Image()
-    image.source.image_uri = (
-        "https://cloud.google.com/vision/docs/images/bicycle_example.png"
-    )
-    vision_response = CloudVisionResponse.from_response(  # type: ignore
-        client.object_localization(image)  # type: ignore
-    )
-    vision_response_with_translations = add_translation_to_CloudVisionDetections(
-        vision_response, [Language(code="hi")]
-    )
-    print(vision_response_with_translations)
-    print(text_translate("hello", "hi"))
+    image.content = open('2019678.jpg', 'rb').read()
+    # image.source.image_uri = (
+    #     "https://cloud.google.com/vision/docs/images/bicycle_example.png"
+    # )
+    vision_response = vision_client.text_detection(image=image) #type: ignore
+    print(vision_response.text_annotations) #type: ignore
 
 
 if __name__ == "__main__":

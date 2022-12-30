@@ -18,7 +18,7 @@ class UserFavLangs(SQLModel, table=True):
     username: str = Field(primary_key=True, foreign_key="users.username")
     code: str = Field(primary_key=True, foreign_key="languages.code")
 
-class Language(SQLModel, table=True):
+class LanguageInDB(SQLModel, table=True):
     code: str = Field(primary_key=True, nullable=False, min_length=2)
 
     users_with_primary_language: List["UserInDB"] = Relationship(back_populates="primary_language")
@@ -28,8 +28,8 @@ class Language(SQLModel, table=True):
     def __tablename__(cls) -> str:
         return "languages"
 
-    def __repr__(self) -> str:
-        return f"Language({self.code})"
+class Language(LanguageInDB):
+    name: str
 
 class User(SQLModel): 
     username: str = Field(primary_key=True)
@@ -51,12 +51,12 @@ class UserInDB(User, table=True):
     hashed_password: bytes
     salt: bytes
 
-    primary_language: Language = Relationship(back_populates="users_with_primary_language")
-    favourite_languages: List[Language] = Relationship(back_populates="users_with_favourite_languages", link_model=UserFavLangs)
+    primary_language: LanguageInDB = Relationship(back_populates="users_with_primary_language")
+    favourite_languages: List[LanguageInDB] = Relationship(back_populates="users_with_favourite_languages", link_model=UserFavLangs)
 
 class UserToFrontend(User):
-    primary_language: Language
-    favourite_languages: List[Language] = Field(min_items=1)
+    primary_language: LanguageInDB
+    favourite_languages: List[LanguageInDB] = Field(min_items=1)
 
 
 if __name__ == '__main__':

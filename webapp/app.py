@@ -11,10 +11,11 @@ from database import (
     engine,
     SQLModel,
     UserToFrontend,
+    LanguageInDB,
     Language,
 )
 from PIL import Image, ImageOps
-from pydantic import BaseModel, Field #type: ignore
+from pydantic import BaseModel, Field  # type: ignore
 import bcrypt
 from starlette.responses import Response
 from starlette.requests import Request
@@ -24,7 +25,7 @@ from jose import jwt, JWTError
 from sqlmodel import Session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi import FastAPI, Depends, status, File, UploadFile, Body #type: ignore
+from fastapi import FastAPI, Depends, status, File, UploadFile, Body  # type: ignore
 from typing import List, Dict, Tuple, Optional  # type: ignore
 import sys
 import os
@@ -115,7 +116,13 @@ class SampleMiddleWare(BaseHTTPMiddleware):
 
 
 # app.add_middleware(SampleMiddleWare)
-app.add_middleware(CORSMiddleware, allow_origins=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")  # type: ignore
@@ -149,15 +156,17 @@ def testing_create_user(
     return User.from_orm(new_user)
 
 
-@app.get("/testing/languages", tags=["Testing"], response_model=List[str])
+@app.get(
+    "/available-languages", tags=["No Authentication"], response_model=List[Language]
+)
 def testing_get_all_languages(
-    session: Session = Depends(get_session),
-) -> List[str]:
-    return [lang.code for lang in session.query(Language).all()]
+    session: Session = Depends(get_session), target_lang: str = "en"
+):
+    return gcp_api_helpers.get_languages(target_lang=target_lang)
 
 
 @app.post(
-    "/testing/upload-image",
+    "/testing/image-object-detection",
     tags=["Testing"],
     response_model=gcp_api_helpers.CloudVisionAndTranslation,
 )
@@ -167,7 +176,7 @@ def testing_upload_image(
     file: UploadFile = File(),
     target_languages: List[str],
 ):
-    target_languages = target_languages[0].split(',')
+    target_languages = target_languages[0].split(",")
     image = Image.open(file.file).convert("RGB")
     image = ImageOps.contain(image=image, size=(1280, 720))
     uploaded_image = aws_api_helpers.upload_PIL_Image_to_s3(image=image)
@@ -175,10 +184,30 @@ def testing_upload_image(
     detections = gcp_api_helpers.object_detection_from_s3(image_name)
     detections_with_translation = (
         gcp_api_helpers.add_translation_to_CloudVisionDetections(
-            detections=detections, target_languages=[Language(code=l) for l in target_languages]
+            detections=detections,
+            target_languages=[LanguageInDB(code=l) for l in target_languages],
         )
     )
     return detections_with_translation
+
+
+@app.post(
+    "/testing/text-translate",
+    tags=["Testing"],
+    response_model=gcp_api_helpers.TextTranslateResponseToFrontend,
+)
+def testing_text_translate(
+    *,
+    text: str = Body(),
+    target_lang: str = Body(),
+    source_lang: Optional[str] = Body(default=None),
+):
+    response = gcp_api_helpers.TextTranslateResponseToFrontend.parse_obj(
+        gcp_api_helpers.text_translate(text, target_lang, source_lang)
+    )
+    if response.detectedSourceLanguage is None:
+        response.detectedSourceLanguage = source_lang
+    return response
 
 
 @app.post("/token", response_model=Token)
