@@ -10,3 +10,4 @@ sqlmodel
 google-cloud-translate
 google-cloud-vision
 boto3[crt]
+pillow
