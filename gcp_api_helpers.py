@@ -11,7 +11,9 @@ translate_client = translate_v2.Client()
 
 class TextTranslateResponseToFrontend(pydantic.BaseModel):
     translatedText: str
-    detectedSourceLanguage: Optional[str] = pydantic.Field(default=None, alias="source_lang")
+    detectedSourceLanguage: Optional[str] = pydantic.Field(
+        default=None, alias="source_lang"
+    )
 
 
 class CloudTranslateResponse(TextTranslateResponseToFrontend):
@@ -26,6 +28,8 @@ class CloudTranslateResponse(TextTranslateResponseToFrontend):
 def text_translate(
     text: str, target_lang: str, source_lang: Optional[str] = None
 ) -> "CloudTranslateResponse":
+    if target_lang == source_lang:
+        return CloudTranslateResponse(translatedText=text, source_lang=target_lang, input=text)
     response = translate_client.translate(  # type: ignore
         values=text, target_language=target_lang, source_language=source_lang
     )
@@ -33,9 +37,10 @@ def text_translate(
 
 
 @functools.lru_cache(maxsize=2048)
-def get_languages(target_lang: str='en'):
-    languages = translate_client.get_languages(target_language=target_lang) #type: ignore
-    return [Language(code=l['language'], name=l['name']) for l in languages] #type: ignore
+def get_languages(target_lang: str = "en"):
+    languages = translate_client.get_languages(target_language=target_lang)  # type: ignore
+    return [Language(code=l["language"], name=l["name"]) for l in languages]  # type: ignore
+
 
 class CloudVisionFromURIRequest(pydantic.BaseModel):
     class Feature(pydantic.BaseModel):
@@ -129,6 +134,7 @@ class Translation(pydantic.BaseModel):
 
 
 class CloudVisionAnnotationsWithTranslations(CloudVisionLocalizedObjectAnnotation):
+    translatedName: str
     translations: List[Translation] = pydantic.Field(default_factory=list)
 
 
@@ -150,9 +156,10 @@ class CloudVisionResponse(pydantic.BaseModel):
 
 
 class CloudVisionAndTranslation(pydantic.BaseModel):
-    detections: List[
-        CloudVisionAnnotationsWithTranslations
-    ] = pydantic.Field(default_factory=list)
+    image_name: str = ""
+    detections: List[CloudVisionAnnotationsWithTranslations] = pydantic.Field(
+        default_factory=list
+    )
 
     class Config:
         orm_mode = True
@@ -167,7 +174,8 @@ def object_detection_from_url(url: pydantic.FileUrl) -> CloudVisionResponse:
 
 class CloudVisionTextDetection(pydantic.BaseModel):
     class Config:
-        orm_mode=True
+        orm_mode = True
+
     locale: str
     description: str
     bounding_poly: CloudVisionBoundingPoly
@@ -186,11 +194,18 @@ def object_detection_from_s3(image_name: str) -> CloudVisionResponse:
 def add_translation_to_CloudVisionDetections(
     detections: CloudVisionResponse,
     target_languages: List[LanguageInDB] = pydantic.Field(min_items=1),
+    source_language: LanguageInDB = LanguageInDB(code="en"),
 ) -> CloudVisionAndTranslation:
     obj = CloudVisionAndTranslation()
     for detection in detections.detections:
         obj.detections.append(
-            CloudVisionAnnotationsWithTranslations(**detection.dict(), translations=[])
+            CloudVisionAnnotationsWithTranslations(
+                **detection.dict(),
+                translations=[],
+                translatedName=text_translate(
+                    detection.name, source_language.code, "en"
+                ).translatedText
+            )
         )
         for target_lang in target_languages:
             obj.detections[-1].translations.append(
@@ -206,12 +221,12 @@ def add_translation_to_CloudVisionDetections(
 
 def main():
     image = vision.Image()
-    image.content = open('2019678.jpg', 'rb').read()
+    image.content = open("2019678.jpg", "rb").read()
     # image.source.image_uri = (
     #     "https://cloud.google.com/vision/docs/images/bicycle_example.png"
     # )
-    vision_response = vision_client.text_detection(image=image) #type: ignore
-    print(vision_response.text_annotations) #type: ignore
+    vision_response = vision_client.text_detection(image=image)  # type: ignore
+    print(vision_response.text_annotations)  # type: ignore
 
 
 if __name__ == "__main__":

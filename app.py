@@ -166,7 +166,8 @@ def testing_upload_image(
     *,
     session: Session = Depends(get_session),
     file: UploadFile = File(),
-    target_languages: List[str],
+    source_language: str = Body(default="en"),
+    target_languages: List[str] = Body(),
 ):
     target_languages = target_languages[0].split(",")
     image = Image.open(file.file).convert("RGB")
@@ -178,8 +179,10 @@ def testing_upload_image(
         gcp_api_helpers.add_translation_to_CloudVisionDetections(
             detections=detections,
             target_languages=[LanguageInDB(code=l) for l in target_languages],
+            source_language=LanguageInDB(code=source_language),
         )
     )
+    detections_with_translation.image_name = image_name
     return detections_with_translation
 
 
