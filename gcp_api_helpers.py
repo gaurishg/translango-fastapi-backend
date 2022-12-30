@@ -187,7 +187,7 @@ def add_translation_to_CloudVisionDetections(
     detections: CloudVisionResponse,
     target_languages: List[LanguageInDB] = pydantic.Field(min_items=1),
 ) -> CloudVisionAndTranslation:
-    obj = CloudVisionAndTranslation.parse_obj(detections.dict())
+    obj = CloudVisionAndTranslation()
     for detection in detections.detections:
         obj.detections.append(
             CloudVisionAnnotationsWithTranslations(**detection.dict(), translations=[])
