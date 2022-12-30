@@ -4,4 +4,6 @@ WORKDIR /
 RUN git clone https://github.com/UTokyo-PBL/yolov7-flask.git
 WORKDIR /yolov7-flask
 RUN pip install -r requirements.txt
-CMD exec uvicorn app:app --host 0.0.0.0 --port $PORT --env-file SECRETS/.env
+COPY --chown=root:root .aws/ /root/
+COPY --chown=root:root SECRETS /yolov7-flask/
+ENTRYPOINT uvicorn app:app --host 0.0.0.0 --port $PORT --env-file SECRETS/.env
