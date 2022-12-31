@@ -1,12 +1,18 @@
 import pydantic
 from typing import Optional, List, Literal, Any
-from google.cloud import vision, translate_v2  # type: ignore
+from google.cloud import vision, translate_v2, storage  # type: ignore
 import functools
-import aws_api_helpers
+
 from database import LanguageInDB, Language
+from PIL import Image
+import hashlib
+import io
 
 vision_client = vision.ImageAnnotatorClient()
 translate_client = translate_v2.Client()
+storage_client = storage.Client()
+storage_bucket = storage_client.bucket("translango-images")
+IMG_FORMAT = "jpeg"
 
 
 class TextTranslateResponseToFrontend(pydantic.BaseModel):
@@ -29,7 +35,7 @@ def text_translate(
     text: str, target_lang: str, source_lang: Optional[str] = None
 ) -> "CloudTranslateResponse":
     if target_lang == source_lang:
-        return CloudTranslateResponse(translatedText=text, source_lang=target_lang, input=text)
+        return CloudTranslateResponse(translatedText=text, input=text)
     response = translate_client.translate(  # type: ignore
         values=text, target_language=target_lang, source_language=source_lang
     )
@@ -185,12 +191,6 @@ class CloudVisionTextDetectionWithSourceLang(CloudVisionTextDetection):
     source_lang: str
 
 
-@functools.lru_cache(maxsize=2048)
-def object_detection_from_s3(image_name: str) -> CloudVisionResponse:
-    presigned_url = aws_api_helpers.create_presigned_url(image_name)
-    return object_detection_from_url(presigned_url)
-
-
 def add_translation_to_CloudVisionDetections(
     detections: CloudVisionResponse,
     target_languages: List[LanguageInDB] = pydantic.Field(min_items=1),
@@ -204,7 +204,7 @@ def add_translation_to_CloudVisionDetections(
                 translations=[],
                 translatedName=text_translate(
                     detection.name, source_language.code, "en"
-                ).translatedText
+                ).translatedText,
             )
         )
         for target_lang in target_languages:
@@ -219,14 +219,45 @@ def add_translation_to_CloudVisionDetections(
     return obj
 
 
+def object_detection_with_translation_from_url(
+    url: pydantic.FileUrl,
+    target_languages: List[LanguageInDB] = pydantic.Field(min_items=1),
+    source_language: LanguageInDB = LanguageInDB(code="en"),
+) -> CloudVisionAndTranslation:
+    return add_translation_to_CloudVisionDetections(
+        object_detection_from_url(url=url),
+        target_languages=target_languages,
+        source_language=source_language,
+    )
+
+
+def upload_PIL_Image(image: Image.Image):
+    name = hashlib.sha512(image.tobytes()).hexdigest() + "." + IMG_FORMAT
+    # Check if object already exists
+    blob = storage_bucket.blob(name)
+    if blob.exists():
+        return blob
+    in_mem_file = io.BytesIO()
+    image.save(in_mem_file, format=IMG_FORMAT)
+    in_mem_file.seek(0)
+    blob.upload_from_file(in_mem_file)
+    return blob
+
+def filename_to_gs_bucket_uri(name: str) -> pydantic.FileUrl:
+    return pydantic.FileUrl(url=f'gs://translango-images/{name}', scheme='gs')
+
+
 def main():
-    image = vision.Image()
-    image.content = open("2019678.jpg", "rb").read()
-    # image.source.image_uri = (
-    #     "https://cloud.google.com/vision/docs/images/bicycle_example.png"
-    # )
-    vision_response = vision_client.text_detection(image=image)  # type: ignore
-    print(vision_response.text_annotations)  # type: ignore
+    image = Image.open("cats-and-dogs.jpg")
+    blob = upload_PIL_Image(image=image)
+    filename: str = blob.name  # type: ignore
+    print(filename)
+    print(
+        object_detection_with_translation_from_url(
+            pydantic.FileUrl(url=f"gs://translango-images/{filename}", scheme="gs"),
+            target_languages=[LanguageInDB(code="hi"), LanguageInDB(code="ja")],
+        )
+    )
 
 
 if __name__ == "__main__":

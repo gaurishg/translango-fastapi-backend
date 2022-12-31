@@ -1,7 +1,6 @@
 # app.py
 
 import gcp_api_helpers
-import aws_api_helpers
 import add_data
 from database import (
     User,
@@ -172,18 +171,13 @@ def testing_upload_image(
     target_languages = target_languages[0].split(",")
     image = Image.open(file.file).convert("RGB")
     image = ImageOps.contain(image=image, size=(1280, 720))
-    uploaded_image = aws_api_helpers.upload_PIL_Image_to_s3(image=image)
-    image_name = uploaded_image.key
-    detections = gcp_api_helpers.object_detection_from_s3(image_name)
-    detections_with_translation = (
-        gcp_api_helpers.add_translation_to_CloudVisionDetections(
-            detections=detections,
-            target_languages=[LanguageInDB(code=l) for l in target_languages],
-            source_language=LanguageInDB(code=source_language),
-        )
+    uploaded_image = gcp_api_helpers.upload_PIL_Image(image=image)
+    image_name: str = uploaded_image.name  # type: ignore
+    return gcp_api_helpers.object_detection_with_translation_from_url(
+        url=gcp_api_helpers.filename_to_gs_bucket_uri(image_name),
+        target_languages=[LanguageInDB(code=l) for l in target_languages],
+        source_language=LanguageInDB(code=source_language),
     )
-    detections_with_translation.image_name = image_name
-    return detections_with_translation
 
 
 @app.post(
