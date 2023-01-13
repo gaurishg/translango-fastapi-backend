@@ -13,13 +13,15 @@ def add_sample_user():
     with Session(engine) as session:
         user = UserInDB(
             username="username",
-            firstname="user",
+            firstname="John",
+            lastname="Doe",
             email="user@example.com",
             hashed_password=hashed_pw,
             salt=salt,
             primary_lang="en",
         )
         user.favourite_languages.append(session.get(LanguageInDB, "ja"))  # type: ignore
+        user.favourite_languages.append(session.get(LanguageInDB, "hi"))  # type: ignore
         session.add(user)
         session.commit()
 
