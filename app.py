@@ -6,14 +6,16 @@ from database import (
     User,
     UserFromFrontend,
     UserInDB,
+    UserToFrontendWithToken,
     engine,
     SQLModel,
     UserToFrontend,
     LanguageInDB,
     Language,
+    Token,
+    TokenData,
 )
 from PIL import Image, ImageOps
-from pydantic import BaseModel, Field  # type: ignore
 import bcrypt
 from starlette.responses import Response
 from starlette.requests import Request
@@ -28,6 +30,7 @@ from typing import List, Dict, Tuple, Optional  # type: ignore
 import os
 import time
 
+
 app: FastAPI = FastAPI()
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "")
@@ -40,24 +43,12 @@ if SECRET_KEY == "" or ALGORITHM == "":
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-
-class TokenData(BaseModel):
-    username: str
-    email: str
-
-
 def get_session():
     with Session(bind=engine) as db:
         yield db
 
 
-def authenticate_user(
-    username: str, password: str, session: Session = Depends(get_session)
-):
+def authenticate_user(username: str, password: str, session: Session):
     user = session.get(UserInDB, username)
     if user is None:
         return False
@@ -68,6 +59,25 @@ def authenticate_user(
     return user
 
 
+def get_access_token_from_username_password(
+    username: str, password: str, session: Session
+):
+    user = authenticate_user(username, password, session)
+    if not user:
+        raise StartletteHTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token_data = jwt.encode(
+        {"username": user.username, "email": user.email},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+    return Token(access_token_data=access_token_data, token_type="bearer")
+
+
 def get_user_from_token_string(
     token_string: str = Depends(oauth2_scheme), session: Session = Depends(get_session)
 ):
@@ -76,7 +86,7 @@ def get_user_from_token_string(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
+    print(f"Token string received: {token_string}")
     try:
         payload: Dict[str, str] = jwt.decode(
             token=token_string, key=SECRET_KEY, algorithms=[ALGORITHM]
@@ -88,7 +98,9 @@ def get_user_from_token_string(
         user = session.get(UserInDB, username)
         if user is None:
             raise credentials_exception
-        return user
+        return UserToFrontendWithToken.from_orm(
+            user, {"token": Token(access_token_data=token_string, token_type="Bearer")}
+        )
     except JWTError:
         raise credentials_exception
 
@@ -130,21 +142,61 @@ def testing_get_all_users(session: Session = Depends(get_session)):
     return result
 
 
-@app.post("/testing/create-user", tags=["Testing"])
+@app.post("/signup", response_model=UserToFrontendWithToken)
 def testing_create_user(
     user_with_pass: UserFromFrontend, session: Session = Depends(get_session)
 ):
     password = user_with_pass.password
+    fav_lang_codes = user_with_pass.favourite_langs
     salt = bcrypt.gensalt()
     password_hash = bcrypt.hashpw(password=password.encode("utf-8"), salt=salt)
+    if session.get(UserInDB, user_with_pass.username):
+        raise StartletteHTTPException(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            detail="Username already exists",
+        )
+
     new_user = UserInDB(
-        **user_with_pass.dict(),
+        **user_with_pass.dict(),  # type: ignore
         hashed_password=password_hash,
         salt=salt,
     )
+
+    for code in fav_lang_codes:
+        new_user.favourite_languages.append(session.get(LanguageInDB, code))  # type: ignore
     session.add(new_user)
     session.commit()
-    return User.from_orm(new_user)
+    session.refresh(new_user)
+    access_token = get_access_token_from_username_password(
+        username=user_with_pass.username, password=password, session=session
+    )
+    response = UserToFrontendWithToken.from_orm(
+        new_user, update={"token": access_token}
+    )
+    return response
+
+
+@app.post("/login", response_model=UserToFrontendWithToken)
+def user_login(
+    username: str = Body(),
+    password: str = Body(),
+    session: Session = Depends(get_session),
+):
+    user = authenticate_user(username=username, password=password, session=session)
+    if not user:
+        raise StartletteHTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Username or password wrong",
+        )
+    response = UserToFrontendWithToken.from_orm(
+        user,
+        update={
+            "token": get_access_token_from_username_password(
+                username=username, password=password, session=session
+            )
+        },
+    )
+    return response
 
 
 @app.get(
@@ -200,24 +252,15 @@ def testing_text_translate(
 
 
 @app.post("/token", response_model=Token)
-def get_access_token(formdata: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(formdata.username, formdata.password)
-    if not user:
-        raise StartletteHTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    access_token = jwt.encode(
-        {"username": user.username, "email": user.email},
-        SECRET_KEY,
-        algorithm=ALGORITHM,
+def get_access_token(
+    formdata: OAuth2PasswordRequestForm = Depends(),
+    session: Session = Depends(get_session),
+):
+    return get_access_token_from_username_password(
+        formdata.username, formdata.password, session=session
     )
 
-    return Token(access_token=access_token, token_type="bearer")
 
-
-@app.get("/users/me", response_model=User)
-def get_me(current_user: User = Depends(get_user_from_token_string)):
+@app.get("/users/me", response_model=UserToFrontend)
+def get_me(current_user: UserToFrontend = Depends(get_user_from_token_string)):
     return current_user
