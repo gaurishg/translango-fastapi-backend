@@ -130,6 +130,8 @@ app.add_middleware(
 
 @app.on_event("startup")  # type: ignore
 def on_startup():
+    if os.path.exists("db.sqlite"):
+        os.remove("db.sqlite")
     SQLModel.metadata.create_all(bind=engine)
     add_data.add_data()
     # print(google_translate.Client().translate("Hello", target_language='hi')) #type: ignore
