@@ -121,6 +121,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://frontend.d2e7dlzpkoas0a.amplifyapp.com",
+        "https://gaurishg.github.io",
+        "http://gaurishg.github.io",
     ],
     allow_credentials=True,
     allow_methods=["*"],
